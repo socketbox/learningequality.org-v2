@@ -61,8 +61,7 @@ ADD --chown=learning_equality:learning_equality https://raw.githubusercontent.co
 RUN echo "eedf0fe5a31e5bb899efa581cbe4df59af02ea5f get-poetry.py" | sha1sum -c - && \
     python get-poetry.py && \
     rm get-poetry.py && \
-    poetry config virtualenvs.create false && \
-    chown -R learning_equality:learning_equality /media
+    poetry config virtualenvs.create false
 
 # Install your app's Python requirements.
 # TODO:
