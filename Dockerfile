@@ -16,7 +16,7 @@ FROM python:3.8-slim-buster as backend
 RUN apt update && apt install -y wget libpq-dev gcc && rm -rf /var/cache/apt
 
 RUN useradd learning_equality -m && \
-    mkdir /app && chown learning_equality /app
+    mkdir /app && chown learning_equality: /app
 
 WORKDIR /app
 
@@ -57,7 +57,7 @@ EXPOSE 8000
 # Install poetry using the installer (keeps Poetry's dependencies isolated from the app's)
 ARG POETRY_HOME=/opt/poetry
 ENV PATH=$PATH:${POETRY_HOME}/bin
-ADD --chown=learning_equality:learning_equality https://raw.githubusercontent.com/python-poetry/poetry/1.1.5/get-poetry.py /app/
+ADD --chown=learning_equality https://raw.githubusercontent.com/python-poetry/poetry/1.1.5/get-poetry.py /app/
 RUN echo "eedf0fe5a31e5bb899efa581cbe4df59af02ea5f get-poetry.py" | sha1sum -c - && \
     python get-poetry.py && \
     rm get-poetry.py && \
@@ -71,7 +71,7 @@ COPY --chown=learning_equality pyproject.toml poetry.lock ./
 RUN if [ "$BUILD_ENV" = "dev" ]; then poetry install --extras gunicorn; else poetry install --no-dev --extras gunicorn; fi
 
 # Don't use the root user as it's an anti-pattern
-USER learning_equality:
+USER learning_equality
 
 COPY --chown=learning_equality --from=frontend ./learning_equality/static_compiled ./learning_equality/static_compiled
 
