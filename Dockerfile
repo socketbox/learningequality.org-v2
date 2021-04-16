@@ -11,17 +11,12 @@ RUN npm ci --no-optional --no-audit --progress=false
 COPY ./learning_equality/static_src/ ./learning_equality/static_src/
 RUN npm run build:prod
 
+# Going with slim-buster, even though that means installing a compiler
+FROM python:3.8-slim-buster as backend
+RUN apt update && apt install -y wget libpq-dev gcc && rm -rf /var/cache/apt
 
-# We use Debian images because they are considered more stable than the alpine
-# ones becase they use a different C compiler. Debian images also come with
-# all useful packages required for image manipulation out of the box. They
-# however weight a lot, approx. up to 1.5GiB per built image.
-FROM python:3.8-buster as backend
-
-ARG POETRY_HOME=/opt/poetry
-ARG POETRY_VERSION=1.1.4
-
-RUN useradd learning_equality -m && mkdir /app && chown learning_equality /app
+RUN useradd learning_equality -m && \
+    mkdir /app && chown learning_equality /app
 
 WORKDIR /app
 
@@ -41,8 +36,8 @@ WORKDIR /app
 #    read by Gunicorn.
 #  * GUNICORN_CMD_ARGS - additional arguments to be passed to Gunicorn. This
 #    variable is read by Gunicorn
-ENV PATH=$PATH:${POETRY_HOME}/bin \
-    PYTHONUNBUFFERED=1 \
+# TODO we're setting a production module (hardcoded) but reading $BUILD_ENV
+ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     DJANGO_SETTINGS_MODULE=learning_equality.settings.production \
     PORT=8000 \
@@ -56,18 +51,28 @@ ENV BUILD_ENV=${BUILD_ENV}
 
 # Port exposed by this container. Should default to the port used by your WSGI
 # server (Gunicorn).
+#TODO a good candidate for config
 EXPOSE 8000
 
 # Install poetry using the installer (keeps Poetry's dependencies isolated from the app's)
-RUN wget https://raw.githubusercontent.com/python-poetry/poetry/${POETRY_VERSION}/get-poetry.py && \
-    echo "eedf0fe5a31e5bb899efa581cbe4df59af02ea5f get-poetry.py" | sha1sum -c - && \
+ARG POETRY_HOME=/opt/poetry
+ENV PATH=$PATH:${POETRY_HOME}/bin
+ADD --chown=learning_equality:learning_equality https://raw.githubusercontent.com/python-poetry/poetry/1.1.5/get-poetry.py /app/
+RUN echo "eedf0fe5a31e5bb899efa581cbe4df59af02ea5f get-poetry.py" | sha1sum -c - && \
     python get-poetry.py && \
     rm get-poetry.py && \
-    poetry config virtualenvs.create false
+    poetry config virtualenvs.create false && \
+    chown -R learning_equality:learning_equality /media
 
 # Install your app's Python requirements.
+# TODO:
+#   1. eliminate conditional logic with targets
+#   2. do this in a venv and then copy the environment over to a third stage
 COPY --chown=learning_equality pyproject.toml poetry.lock ./
 RUN if [ "$BUILD_ENV" = "dev" ]; then poetry install --extras gunicorn; else poetry install --no-dev --extras gunicorn; fi
+
+# Don't use the root user as it's an anti-pattern
+USER learning_equality:
 
 COPY --chown=learning_equality --from=frontend ./learning_equality/static_compiled ./learning_equality/static_compiled
 
@@ -80,10 +85,7 @@ COPY --chown=learning_equality . .
 RUN SECRET_KEY=none python manage.py collectstatic --noinput --clear
 
 # Load shortcuts
-COPY ./docker/bashrc.sh /home/learning_equality/.bashrc
-
-# Don't use the root user as it's an anti-pattern
-USER learning_equality
+COPY --chown=learning_equality ./docker/bashrc.sh /home/learning_equality/.bashrc
 
 # Run the WSGI server. It reads GUNICORN_CMD_ARGS, PORT and WEB_CONCURRENCY
 # environment variable hence we don't specify a lot options below.
