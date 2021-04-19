@@ -13,7 +13,9 @@ RUN npm run build:prod
 
 # Going with slim-buster, even though that means installing a compiler
 FROM python:3.8-slim-buster as backend
-RUN apt update && apt install -y wget libpq-dev gcc && rm -rf /var/cache/apt
+RUN apt update && \
+    apt install -y wget libpq-dev gcc libjpeg62-turbo-dev && \
+    rm -rf /var/cache/apt
 
 RUN useradd learning_equality -m && \
     mkdir /app && chown learning_equality: /app
