@@ -1,3 +1,4 @@
+##### STAGE 0
 FROM node:14 as frontend
 
 # Make build & post-install scripts behave as if we were in a CI environment (e.g. for logging verbosity purposes).
@@ -11,6 +12,7 @@ RUN npm ci --no-optional --no-audit --progress=false
 COPY ./learning_equality/static_src/ ./learning_equality/static_src/
 RUN npm run build:prod
 
+##### STAGE 1
 # Going with slim-buster, even though that means installing a compiler
 FROM python:3.8-slim-buster as backend
 RUN apt update && \
@@ -70,11 +72,6 @@ RUN echo "eedf0fe5a31e5bb899efa581cbe4df59af02ea5f get-poetry.py" | sha1sum -c -
 #   1. eliminate conditional logic with targets
 #   2. do this in a venv and then copy the environment over to a third stage
 COPY --chown=learning_equality pyproject.toml poetry.lock ./
-RUN if [ "$BUILD_ENV" = "dev" ]; then poetry install --extras gunicorn; else poetry install --no-dev --extras gunicorn; fi
-
-# Don't use the root user as it's an anti-pattern
-USER learning_equality
-
 COPY --chown=learning_equality --from=frontend ./learning_equality/static_compiled ./learning_equality/static_compiled
 
 # Copy application code.
@@ -83,11 +80,28 @@ COPY --chown=learning_equality . .
 # Collect static. This command will move static files from application
 # directories and "static_compiled" folder to the main static directory that
 # will be served by the WSGI server.
+#TODO: can we remove this as a result of whitenoise?
 RUN SECRET_KEY=none python manage.py collectstatic --noinput --clear
 
 # Load shortcuts
 COPY --chown=learning_equality ./docker/bashrc.sh /home/learning_equality/.bashrc
 
+##### STAGE 2
+FROM builder as dev
+RUN poetry install --extras gunicorn
+# Don't use the root user as it's an anti-pattern
+USER learning_equality
 # Run the WSGI server. It reads GUNICORN_CMD_ARGS, PORT and WEB_CONCURRENCY
 # environment variable hence we don't specify a lot options below.
+CMD gunicorn learning_equality.wsgi:application
+
+##### STAGE 3
+FROM dev as staging
+USER learning_equality
+CMD gunicorn learning_equality.wsgi:application
+
+##### STAGE 4
+FROM builder as prod
+RUN poetry install --no-dev --extras gunicorn
+USER learning_equality
 CMD gunicorn learning_equality.wsgi:application
